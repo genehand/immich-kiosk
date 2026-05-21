@@ -162,6 +162,32 @@ func (a *Asset) albumAssets(albumID, requestID, deviceID string) (Album, string,
 		return immichAPIFail(album, err, body, apiURL.String())
 	}
 
+	// If the album has assets (standard Immich API), return as-is.
+	if len(album.Assets) > 0 {
+		return album, apiURL.String(), nil
+	}
+
+	// The album endpoint returned no assets (e.g. gallery fork of Immich).
+	// Fall back to POST /api/search/random with albumIds filter.
+	return a.albumAssetsViaSearch(albumID, requestID, deviceID, album)
+}
+
+// albumAssetsViaSearch fetches album assets via POST /api/search/random with albumIds.
+// This is a fallback for Immich forks (like the gallery fork) that do not include
+// the assets array in the album response.
+func (a *Asset) albumAssetsViaSearch(albumID, requestID, deviceID string, album Album) (Album, string, error) {
+	requestBody := SearchRandomBody{
+		AlbumIDs: []string{albumID},
+		Size:     100,
+	}
+
+	immichAssets, apiURL, err := a.fetchAssets(requestID, deviceID, requestBody)
+	if err != nil {
+		return immichAPIFail(album, err, nil, apiURL.String())
+	}
+
+	album.Assets = immichAssets
+
 	return album, apiURL.String(), nil
 }
 
