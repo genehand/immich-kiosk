@@ -175,15 +175,40 @@ func (a *Asset) albumAssets(albumID, requestID, deviceID string) (Album, string,
 // albumAssetsViaSearch fetches album assets via POST /api/search/random with albumIds.
 // This is a fallback for Immich forks (like the gallery fork) that do not include
 // the assets array in the album response.
+//
+// Uses immichAPICall directly (not fetchAssets) to avoid a cache shape conflict:
+// AssetFromAlbum caches Album structs under this URL key, while fetchAssets
+// caches []Asset under the same key.
 func (a *Asset) albumAssetsViaSearch(albumID, requestID, deviceID string, album Album) (Album, string, error) {
 	requestBody := SearchRandomBody{
 		AlbumIDs: []string{albumID},
 		Size:     100,
 	}
 
-	immichAssets, apiURL, err := a.fetchAssets(requestID, deviceID, requestBody)
+	u, err := url.Parse(a.requestConfig.ImmichURL)
 	if err != nil {
-		return immichAPIFail(album, err, nil, apiURL.String())
+		return immichAPIFail(album, err, nil, "")
+	}
+
+	apiURL := url.URL{
+		Scheme: u.Scheme,
+		Host:   u.Host,
+		Path:   path.Join("api", "search", "random"),
+	}
+
+	jsonBody, marshalErr := json.Marshal(requestBody)
+	if marshalErr != nil {
+		return immichAPIFail(album, marshalErr, nil, "")
+	}
+
+	apiBody, _, _, err := a.immichAPICall(a.ctx, http.MethodPost, apiURL.String(), jsonBody)
+	if err != nil {
+		return immichAPIFail(album, err, apiBody, apiURL.String())
+	}
+
+	var immichAssets []Asset
+	if err = json.Unmarshal(apiBody, &immichAssets); err != nil {
+		return immichAPIFail(album, err, apiBody, apiURL.String())
 	}
 
 	album.Assets = immichAssets
