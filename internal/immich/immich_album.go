@@ -172,7 +172,7 @@ func (a *Asset) albumAssets(albumID, requestID, deviceID string) (Album, string,
 	return a.albumAssetsViaSearch(albumID, requestID, deviceID, album)
 }
 
-// albumAssetsViaSearch fetches album assets via POST /api/search/random with albumIds.
+// albumAssetsViaSearch fetches album assets via POST /api/search/metadata with albumIds filter.
 // This is a fallback for Immich forks (like the gallery fork) that do not include
 // the assets array in the album response.
 //
@@ -193,7 +193,7 @@ func (a *Asset) albumAssetsViaSearch(albumID, requestID, deviceID string, album 
 	apiURL := url.URL{
 		Scheme: u.Scheme,
 		Host:   u.Host,
-		Path:   path.Join("api", "search", "random"),
+		Path:   path.Join("api", "search", "metadata"),
 	}
 
 	jsonBody, marshalErr := json.Marshal(requestBody)
@@ -201,17 +201,19 @@ func (a *Asset) albumAssetsViaSearch(albumID, requestID, deviceID string, album 
 		return immichAPIFail(album, marshalErr, nil, "")
 	}
 
-	apiBody, _, _, err := a.immichAPICall(a.ctx, http.MethodPost, apiURL.String(), jsonBody)
+	// Always use withImmichAPICache with SearchMetadataResponse since we're using metadata endpoint
+	immichAPICall := withImmichAPICache(a.immichAPICall, requestID, deviceID, a.requestConfig, SearchMetadataResponse{})
+	apiBody, _, _, err := immichAPICall(a.ctx, http.MethodPost, apiURL.String(), jsonBody)
 	if err != nil {
 		return immichAPIFail(album, err, apiBody, apiURL.String())
 	}
 
-	var immichAssets []Asset
-	if err = json.Unmarshal(apiBody, &immichAssets); err != nil {
+	var searchMetadataResponse SearchMetadataResponse
+	if err = json.Unmarshal(apiBody, &searchMetadataResponse); err != nil {
 		return immichAPIFail(album, err, apiBody, apiURL.String())
 	}
 
-	album.Assets = immichAssets
+	album.Assets = searchMetadataResponse.Assets.Items
 
 	return album, apiURL.String(), nil
 }

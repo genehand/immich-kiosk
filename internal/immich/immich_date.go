@@ -83,7 +83,7 @@ func (a *Asset) RandomAssetInDateRange(dateRange, requestID, deviceID string, is
 		apiURL := url.URL{
 			Scheme:   u.Scheme,
 			Host:     u.Host,
-			Path:     "api/search/random",
+			Path:     "api/search/metadata",
 			RawQuery: fmt.Sprintf("kiosk=%x", sha256.Sum256([]byte(queries.Encode()))),
 		}
 
@@ -92,18 +92,21 @@ func (a *Asset) RandomAssetInDateRange(dateRange, requestID, deviceID string, is
 			return fmt.Errorf("marshaling request body: %w", marshalErr)
 		}
 
-		immichAPICall := withImmichAPICache(a.immichAPICall, requestID, deviceID, a.requestConfig, immichAssets)
+		// Always use withImmichAPICache with SearchMetadataResponse since we're using metadata endpoint
+		immichAPICall := withImmichAPICache(a.immichAPICall, requestID, deviceID, a.requestConfig, SearchMetadataResponse{})
 		apiBody, _, _, err := immichAPICall(a.ctx, http.MethodPost, apiURL.String(), jsonBody)
 		if err != nil {
 			_, _, err = immichAPIFail(immichAssets, err, apiBody, apiURL.String())
 			return err
 		}
 
-		err = json.Unmarshal(apiBody, &immichAssets)
-		if err != nil {
-			_, _, err = immichAPIFail(immichAssets, err, apiBody, apiURL.String())
+		var searchMetadataResponse SearchMetadataResponse
+		if err = json.Unmarshal(apiBody, &searchMetadataResponse); err != nil {
+			log.Error("failed Unmarshal", "err", err)
+			_, _, err = immichAPIFail(searchMetadataResponse, err, apiBody, apiURL.String())
 			return err
 		}
+		immichAssets = searchMetadataResponse.Assets.Items
 
 		apiCacheKey := cache.APICacheKey(apiURL.String(), deviceID, a.requestConfig.SelectedUser)
 

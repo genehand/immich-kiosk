@@ -250,10 +250,9 @@ func (a *Asset) fetchAssets(requestID, deviceID string, requestBody SearchRandom
 
 	queries, _ := query.Values(requestBody)
 
-	apiPath := "api/search/random"
-	if filterNewest {
-		apiPath = "api/search/metadata"
-	}
+	// Use /api/search/metadata endpoint instead of /api/search/random
+	// for compatibility with the gallery fork
+	apiPath := "api/search/metadata"
 
 	apiURL := url.URL{
 		Scheme:   u.Scheme,
@@ -268,13 +267,8 @@ func (a *Asset) fetchAssets(requestID, deviceID string, requestBody SearchRandom
 		return nil, url.URL{}, err
 	}
 
-	var immichAPICall apiCall
-	if filterNewest {
-		immichAPICall = withImmichAPICache(a.immichAPICall, requestID, deviceID, a.requestConfig, SearchMetadataResponse{})
-	} else {
-		immichAPICall = withImmichAPICache(a.immichAPICall, requestID, deviceID, a.requestConfig, []Asset{})
-	}
-
+	// Always use withImmichAPICache with SearchMetadataResponse since we're using metadata endpoint
+	immichAPICall := withImmichAPICache(a.immichAPICall, requestID, deviceID, a.requestConfig, SearchMetadataResponse{})
 	apiBody, _, usingCache, err := immichAPICall(a.ctx, http.MethodPost, apiURL.String(), jsonBody)
 	if err != nil {
 		_, _, err = immichAPIFail(immichAssets, err, apiBody, apiURL.String())
